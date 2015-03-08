@@ -7,10 +7,11 @@ from datetime import datetime, timedelta
 import binascii
 import math
 import logging
+import pprint
 import calculations
 
 
-def connect_to_aws_db(host="localhost", user="aws", passwd="ascetall", db="aws"):
+def connect_to_aws_db(host="localhost", user="aws", passwd="ASCEshort1", db="aws"):
     try:
         conn = MySQLdb.connect(host=host, user=user, passwd=passwd, db=db)
     except MySQLdb.Error, e:
@@ -36,21 +37,25 @@ def get_station_details(conn, dmp_file_path):
     aws_name = m.group(0)
 
     sql = "SELECT aws_id, scm FROM tbl_stations WHERE filename = '" + aws_name + "';"
+    try:
+        cursor = conn.cursor()
+        cursor.execute(sql)
 
-    cursor = conn.cursor()
-    cursor.execute(sql)
-
-    result = ''
-    while 1:
-        row = cursor.fetchone()
-        if row is None:
-            break
-        #aws_id, scm
-        result = [str(row[0]), str(row[1])]
-
-    cursor.close()
-    conn.commit()
-    conn.close()
+        result = ''
+        while 1:
+            row = cursor.fetchone()
+            if row is None:
+                break
+            #aws_id, scm
+            result = [str(row[0]), str(row[1])]
+    except MySQLdb.Error, e:
+        print "Error %d: %s" % (e.args[0], e.args[1])
+        logging.error("failed to connect to DB in get_station_aws_id()\n" + str(e))
+        sys.exit(1)
+    finally:
+        cursor.close()
+        conn.commit()
+        #conn.close()
 
     return result
 
@@ -84,12 +89,13 @@ def reading_vars_from_scm(scm_doc):
             i = dict()
             #print etree.tostring(instrument, pretty_print=True)
             i['inst'] = instrument.tag.replace('INST', '')
-
+            i['model'] = instrument.get('Model')
             for inst in instrument.getchildren():
                 if inst.tag == 'Channel':
                     i['name'] = inst.get('Name')
                 if inst.tag.startswith('Scal'):
-                    if inst.get('Type').startswith("'A'"):
+                    # some Scaling seems to miss type and this seems to eb for A gain B types only
+                    if inst.get('Type') is None or inst.get('Type').startswith("'A'"):
                         i['type'] = 'conversion'
                         i['conv'] = inst.get('Type')
                         i['a'] = inst.get('a')
@@ -100,7 +106,7 @@ def reading_vars_from_scm(scm_doc):
                     #print etree.tostring(inst, pretty_print=True)
             instruments.append(i)
 
-    #Merge Buffer0 listing  with instument details
+    #Merge Buffer0 listing  with instrument details
     instance_entries_with_details = []
     for instance_entry in instance_entries:
         for instrument in instruments:
@@ -115,10 +121,11 @@ def readings_vars_additions_from_db(conn, reading_vars):
         cursor = conn.cursor()
         reading_var_additions = []
         for reading_var in reading_vars:
+            # TODO: remove the action's strip('2') when moving to final system with all the '2' removed from SCM files.
             sql = '''SELECT db_col_name, bytes
                      FROM tbl_var_lookup
                      WHERE mea_name = "''' + reading_var.get('name') + '''"
-                     AND mea_action = "''' + reading_var.get('action') + '''";'''
+                     AND mea_action = "''' + reading_var.get('action').replace('AVE10', 'AVE') + '''";'''
             cursor.execute(sql)
             row = cursor.fetchone()
             if row is None:
@@ -131,10 +138,10 @@ def readings_vars_additions_from_db(conn, reading_vars):
         print "Error %d: %s" % (e.args[0], e.args[1])
         logging.error("failed to connect to DB in get_station_aws_id()\n" + str(e))
         sys.exit(1)
-
-    cursor.close()
-    conn.commit()
-    conn.close()
+    finally:
+        cursor.close()
+        conn.commit()
+        #conn.close()
 
     return reading_var_additions
 
@@ -213,7 +220,6 @@ def parse_bytes_logged(binary_dump):
     :return: integer
     """
     logging.debug("def parse_bytes_logged")
-
     return int(binary_dump[17] +
                256 * binary_dump[18] +
                (math.pow(256, 2) * binary_dump[19]) +
@@ -257,7 +263,6 @@ def parse_dump_timestamps(binary_dump):
                        (math.pow(256, 2) * binary_dump[19]) +
                        (math.pow(256, 3) * binary_dump[20]))
     num_logs = int(bytes_logged / log_size)
-
     timestamps = []
     for i in range(num_logs):
         timestamp = last_log_stamp - + timedelta(0, i * log_interval)
@@ -275,9 +280,11 @@ def parse_dump(binary_dump, reading_vars):
     :param binary_reading: a 15min array from data from a DMP file
     :return: dictionary of decimal values
     """
+
     timestamps = parse_dump_timestamps(binary_dump)
     buff_length = parse_bytes_logged(binary_dump)
     number_of_readings = len(timestamps)
+
     #sql = read_15min_buffers(timestamps, binary_dump, bytes_logged, number_of_readings)
 
     #magic reading start number
@@ -293,6 +300,7 @@ def parse_dump(binary_dump, reading_vars):
     return {'readings': readings}
 
 
+# TODO: Nenandi battery reading
 def parse_dump_reading(binary_dump_reading, reading_vars):
     sin = 0
     cos = 0
@@ -305,15 +313,25 @@ def parse_dump_reading(binary_dump_reading, reading_vars):
     reading_pointer = 0
     for var in reading_vars:
         #get bytes
-        if var.get('name') in ['sin', 'cos', 'LeafWet']:
+        #if var.get('name') in ['sin', 'cos', 'LeafWet']:
+        if var.get('name') in ['LeafWet', 'a7']:
             bytes = 1
-        elif var.get('name') in ['WndDir']:
+        elif var.get('name') == 'cos' and var.get('model') == 'WDA-CH':
+            bytes = 2  # extra 2 bytes for high-resolution wind dir sensor
+        elif var.get('name') in ['sin', 'cos']:
             bytes = 0
+        #elif var.get('name') == 'WndDir':
+        #    if var.get('model') == 'WndDir':
+        #        bytes = 0
+        #    elif var.get('model') == 'WndDirOffst':
+        #        bytes = 2
         else:
             bytes = 2
+        #bytes = int(var.get('bytes'))
 
         #get the raw number
         var_bytes = binary_dump_reading[reading_pointer:reading_pointer + bytes]
+
         if len(var_bytes) == 1:
             raw_number = var_bytes[0]
         elif len(var_bytes) == 2:
@@ -425,24 +443,61 @@ def generate_insert_sql(aws_id, readings):
     return sql
 
 
-def insert_reading(insert_statement):
-    try:
-        conn = MySQLdb.connect(host="localhost", user="aws", passwd="ascetall", db="aws")
-    except MySQLdb.Error, e:
-        logging.error("failed to connect to DB in standalone.insert_reading()\n" + str(e))
-        return [False, "failed to connect to DB in standalone.insert_reading()\n" + str(e)]
-
+def insert_reading(conn, insert_statement):
     cursor = conn.cursor()
     try:
         cursor.execute(insert_statement)
-        conn.commit()
-        conn.close()
     except MySQLdb.Error, e:
-        logging.error("failed to INSERT in standalone.insert_reading()\n" + str(e))
-        return [False, "failed to INSERT in standalone.insert_reading()\n" + str(e)]
+        logging.error("failed to INSERT in insert_reading()\n" + str(e))
+        return [False, "failed to INSERT in insert_reading()\n" + str(e)]
+    finally:
+        cursor.close()
+        conn.commit()
+        #conn.close()
 
     return [True]
 
 
+def process(dmp_file):
+    """
+    Starting function for DMP file processing
 
+    :param dmp_file:
+    :return: True if processed with no errors
+    """
+    try:
+        # connect to DB
+        # using remove DB for testing
+        conn = connect_to_aws_db(host="butterfree-bu.nexus.csiro.au", user="aws", passwd="ASCEshort1", db="aws")
 
+        # get station ID & SCM file
+        [aws_id, scm_doc] = get_station_details(conn, dmp_file)
+
+        # get the variables that this station reads, according to its SCM file
+        # TODO: check LMW07 battery values (divide by 100?)
+        # TODO: check all stations leaf wetness readings
+        reading_vars = reading_vars_from_scm(scm_doc)
+        print reading_vars
+        enhanced_reading_vars = readings_vars_additions_from_db(conn, reading_vars)
+        print enhanced_reading_vars
+        # get each 'dump' of data from the DMP file, usually 4 per hour, sometimes 6
+        dumps = get_dmp_file_dumps(dmp_file)
+
+        # built an SQL INSERT statement for each 'dump'
+        sql = ''
+        for dump in dumps:
+            sql += generate_insert_sql(aws_id, parse_dump(dump, enhanced_reading_vars)) + '\n'
+        # INSERT each 'dump' into the DB
+        insert = insert_reading(conn, sql)
+        #insert = [True, '']
+        if insert[0]:
+            print dmp_file + ' INSERTED ok'
+            return [True]
+        else:
+            print [False, insert[1]]
+
+        # kill the DB connection
+        conn.close()
+        #logging.info("Processed: " + dmp_file)
+    except Exception, e:
+        logging.error('processor: ' + e.message)

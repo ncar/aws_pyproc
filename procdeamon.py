@@ -17,8 +17,9 @@ class MyEventHandler(pyinotify.ProcessEvent):
         try:
             p = event.pathname
             # only notice files with .DMP at end
-            if not os.path.isfile(p) and p[-3:] != "DMP":
+            if not os.path.isfile(p) or p[-3:] != "DMP":
                 logging.info("Ignored, not DMP file: " + p)
+                os.unlink(p)
                 return
 
             # delete zero-length files
@@ -35,25 +36,27 @@ class MyEventHandler(pyinotify.ProcessEvent):
                 logging.info("Unprocessed, station not known: " + p)
                 return
 
-            #read data from the file that arrived
+            #check if archiving folder for this file exists
+            if not os.path.exists(settings.ARCHIVE_DIR + aws_id):
+                os.makedirs(settings.ARCHIVE_DIR + aws_id)
+                
+            #
+            #   Read DMP file
+            #
             fin = open(p, "rb")
             data = fin.read()
             fin.close()
 
-            #check if archiving folder for this file exists
-            if not os.path.exists(settings.ARCHIVE_DIR + aws_id):
-                os.makedirs(settings.ARCHIVE_DIR + aws_id)
-
             #
             #   Process DMP file
             #
-            #sql = processor.process_multi_file(p)
+            processor.process(p)
 
             # do anything else that needs doing, based on aws_id
             additional_handling(aws_id, p)
 
             #
-            #   Archive the DMP data
+            #   Archive DMP file
             #
             #copy/append processed file to station's home dir then delete the file that arrived
             fout = open(settings.ARCHIVE_DIR + aws_id + '/' + file_name, "ab")
@@ -63,9 +66,6 @@ class MyEventHandler(pyinotify.ProcessEvent):
 
             logging.info("Processed: " + p)
 
-        except IndexError, e:
-            logging.error("procdeamon IN_CREATE index error " + p + "\nError report: " + str(e))
-            #print traceback.format_exc()
         except Exception, e:
             logging.error("procdeamon IN_CREATE " + p + "\nError report: " + str(e))
             #emailerror.send("procdeamon IN_CREATE " + p + "\nError report: " + str(e))
@@ -86,17 +86,17 @@ def ftp_file_to_adld(aws_id, path):
     try:
         ftp = ftplib.FTP()
         ftp.connect('links.waterdata.com.au')
-        ftp.login('SAMDB','$samdb@')
+        ftp.login('SAMDB', '$samdb@')
         if aws_id == 'ADLD01':
             ftp.cwd('/SAMDB-AWS/Virginia/')
         if aws_id == 'ADLD02':
             ftp.cwd('/SAMDB-AWS/Chrlston/')
         fin = open(path, "rb")
-        ftp.storbinary ('APPE ' + path.split('/')[-1], fin, 1)
+        ftp.storbinary('APPE ' + path.split('/')[-1], fin, 1)
         fin.close()
         ftp.quit()
     except Exception, e:
-        logging.error("ftpwatcherd links.waterdata.com.au FTP: " + str(e))
+        logging.error("procdeamon links.waterdata.com.au FTP: " + str(e))
 
 
 if __name__ == '__main__':
@@ -108,7 +108,7 @@ if __name__ == '__main__':
         wm = pyinotify.WatchManager()
         notifier = pyinotify.Notifier(wm, MyEventHandler())
         # Exclude patterns from list: i.e. the old folder
-        excl = pyinotify.ExcludeFilter(['^/home/ftp/aws/old/'])
+        excl = pyinotify.ExcludeFilter(settings.WATCHED_DIR_EXCLUSIONS)
         wm.add_watch(settings.WATCHED_DIR, pyinotify.IN_CLOSE_WRITE, rec=True, exclude_filter=excl)
         notifier.loop(
             daemonize=True,

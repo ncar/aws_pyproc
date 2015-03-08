@@ -1,35 +1,39 @@
-import sys
 import logging
 import functions
-import json
+import os
+import settings
 
 
 if __name__ == "__main__":
-    #set up logging
-    logging.basicConfig(filename='saaws.log',
+    # set up test logging
+    logging.basicConfig(filename=settings.HOME_DIR + 'test/test.log',
                         format='%(asctime)s %(levelname)s\n%(message)s\n\n',
                         level=logging.DEBUG)
 
-    #dmp_file = sys.argv[1]
-    #dmp_file = '/var/lib/saaws/data/CADELL140901-0000.DMP'
-    #dmp_file = '/var/lib/saaws/data/ROBY140901-0000.DMP'
-    #dmp_file = '/var/lib/saaws/data/STIRLING140901-0000.DMP'
-    #dmp_file = '/var/lib/saaws/data/Murputja140901-0000.DMP'
-    dmp_file = 'C:\\Users\\car587\\Desktop\\WindDir\\STIRLING140901-0000.DMP'
-    logging.debug('processing file ' + dmp_file)
+    # get test data files
+    dmp_files = []
+    dmp_files_dir = settings.HOME_DIR + 'test/DMP_files/'
+    for f in os.listdir(dmp_files_dir):
+        dmp_files.append(dmp_files_dir + f)
+        functions.process(dmp_files_dir + f)
 
-    conn = functions.connect_to_aws_db(host="aws-samdbnrm.sa.gov.au", user="aws", passwd="ascetall", db="aws")
 
-    [aws_id, scm_doc] = functions.get_station_details(conn, dmp_file)
-    reading_vars = functions.reading_vars_from_scm(scm_doc)
+    #functions.process(dmp_files_dir + 'NENANDI150306-0000.DMP')
+    #functions.process(dmp_files_dir + 'ALDINGA150306-0100.DMP')
+    #functions.process(dmp_files_dir + 'MTCMPASS150306-0000.DMP')
+    #functions.process(dmp_files_dir + 'JOYCE150306-0000.DMP')
+    #functions.process(dmp_files_dir + 'CADELL150306-0000.DMP')
+
+
+    #functions.process()
     #for var in reading_vars:
     #    print var
 
     #print '-----------------------------------------------------'
-    enhanced_reading_vars = functions.readings_vars_additions_from_db(conn, reading_vars)
+
     #for var in enhanced_reading_vars:
     #    print var
-
+    '''
     dumps = functions.get_dmp_file_dumps(dmp_file)
 
     sql = ''
@@ -61,4 +65,4 @@ if __name__ == "__main__":
 
     #with open('data/STIRLING.scm', "r") as f:
     #    scm_xml = f.read().replace('\n', '')
-
+    '''
