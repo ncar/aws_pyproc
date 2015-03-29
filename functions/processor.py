@@ -472,7 +472,7 @@ def process(dmp_file):
     try:
         # connect to DB
         # using remove DB for testing
-        conn = connect_to_aws_db(host="butterfree-bu.nexus.csiro.au", user="aws", passwd="ASCEshort1", db="aws")
+        conn = connect_to_aws_db()
 
         # get station ID & SCM file
         [aws_id, scm_doc] = get_station_details(conn, dmp_file)
