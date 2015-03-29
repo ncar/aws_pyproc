@@ -37,6 +37,9 @@ def get_station_details(conn, dmp_file_path):
 
     sql = "SELECT aws_id, scm FROM tbl_stations WHERE filename = '" + aws_name + "';"
     try:
+        if conn is None:
+            conn = connect_to_aws_db()
+
         cursor = conn.cursor()
         cursor.execute(sql)
 
