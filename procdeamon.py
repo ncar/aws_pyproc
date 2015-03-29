@@ -8,12 +8,16 @@ import settings
 
 
 class MyEventHandler(pyinotify.ProcessEvent):
+
+    conn = None
+
     def my_init(self, file_object=sys.stdout):
         self._file_object = file_object
+        conn = processor.connect_to_aws_db()
         logging.info("procdeamon Turned On")
 
     #react when a file is created
-    def process_IN_CLOSE_WRITE(self, event):
+    def process_IN_CLOSE_WRITE(self, event, conn=conn):
         try:
             p = event.pathname
             # only notice files with .DMP at end
@@ -30,7 +34,7 @@ class MyEventHandler(pyinotify.ProcessEvent):
 
             # string {filename}.DMP
             file_name = p.split('/')[-1]
-            [aws_id, scm_file] = processor.get_station_details(p)
+            [aws_id, scm_file] = processor.get_station_details(conn, p)
             # don't process unknown station's data
             if aws_id is None or len(aws_id) == 0:
                 logging.info("Unprocessed, station not known: " + p)
