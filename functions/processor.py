@@ -15,7 +15,7 @@ def connect_to_aws_db(host="localhost", user="aws", passwd="ASCEshort1", db="aws
         conn = MySQLdb.connect(host=host, user=user, passwd=passwd, db=db)
     except MySQLdb.Error, e:
         print "Error %d: %s" % (e.args[0], e.args[1])
-        logging.error("failed to connect to DB in get_station_aws_id()\n" + str(e))
+        logging.error("failed to connect to DB in get_station_aws_id()\n" + str(e.message))
         sys.exit(1)
 
     return conn
@@ -442,7 +442,7 @@ def generate_insert_sql(aws_id, readings):
     columns = 'aws_id,stamp,' + columns
     values += ')'
 
-    sql = 'INSERT INTO tbl_minute_data (' + columns.strip(',') + ') VALUES (' + values.strip(',()') + ');'
+    sql = 'INSERT INTO tbl_data_minutes (' + columns.strip(',') + ') VALUES (' + values.strip(',()') + ');'
 
     return sql
 
@@ -481,9 +481,7 @@ def process(dmp_file):
         # TODO: check LMW07 battery values (divide by 100?)
         # TODO: check all stations leaf wetness readings
         reading_vars = reading_vars_from_scm(scm_doc)
-        print reading_vars
         enhanced_reading_vars = readings_vars_additions_from_db(conn, reading_vars)
-        print enhanced_reading_vars
         # get each 'dump' of data from the DMP file, usually 4 per hour, sometimes 6
         dumps = get_dmp_file_dumps(dmp_file)
 
@@ -491,11 +489,8 @@ def process(dmp_file):
         sql = ''
         for dump in dumps:
             sql += generate_insert_sql(aws_id, parse_dump(dump, enhanced_reading_vars)) + '\n'
-        # INSERT each 'dump' into the DB
         insert = insert_reading(conn, sql)
-        #insert = [True, '']
         if insert[0]:
-            print dmp_file + ' INSERTED ok'
             return [True]
         else:
             print [False, insert[1]]
