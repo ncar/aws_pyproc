@@ -15,7 +15,7 @@ def connect_to_aws_db(host="localhost", user="aws", passwd="ASCEshort1", db="aws
         conn = MySQLdb.connect(host=host, user=user, passwd=passwd, db=db)
     except MySQLdb.Error, e:
         print "Error %d: %s" % (e.args[0], e.args[1])
-        logging.error("failed to connect to DB in get_station_aws_id()\n" + str(e.message))
+        logging.error("failed to connect to DB in connect_to_aws_db()\n" + str(e.message))
         sys.exit(1)
 
     return conn
@@ -29,7 +29,7 @@ def get_station_details(conn, dmp_file_path):
     :param dmp_file_path: path to a DMP file
     :return: an aws_id and an SCM (XML) file as a string
     """
-    logging.debug("def get_station_aws_id(" + dmp_file_path + ")")
+    logging.debug("def get_station_details(" + dmp_file_path + ")")
     # get only the alphabetical parts of the filename from the full_path
     file_name = dmp_file_path.split('/')[-1]
     m = re.search("(^[A-Za-z_]*)", file_name)
@@ -52,7 +52,7 @@ def get_station_details(conn, dmp_file_path):
             result = [str(row[0]), str(row[1])]
     except MySQLdb.Error, e:
         print "Error %d: %s" % (e.args[0], e.args[1])
-        logging.error("failed to connect to DB in get_station_aws_id()\n" + str(e))
+        logging.error("failed to connect to DB in get_station_details()\n" + str(e))
         sys.exit(1)
     finally:
         cursor.close()
@@ -138,7 +138,7 @@ def readings_vars_additions_from_db(conn, reading_vars):
             reading_var_additions.append(reading_var_addition)
     except MySQLdb.Error, e:
         print "Error %d: %s" % (e.args[0], e.args[1])
-        logging.error("failed to connect to DB in get_station_aws_id()\n" + str(e))
+        logging.error("failed to connect to DB in readings_vars_additions_from_db()\n" + str(e))
         sys.exit(1)
     finally:
         cursor.close()
