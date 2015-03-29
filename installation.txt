@@ -1,14 +1,1 @@
-sudo mkdir /opt/procdeamon
-cd /opt/procdeamon
-sudo git clone https://github.com/ncar/aws_pyproc.git .
-
-pip install pyinotify
-aptitude install libxml2-dev libxslt-dev
-pip install lxml
-#
-#   Set up the Linux installation's required dirs
-#
-mkdir /opt/archive
-mkdir /opt/incoming
-adduser ftp
-# pwd ASCEshort1
+See home dir on server

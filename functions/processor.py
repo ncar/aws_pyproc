@@ -7,7 +7,6 @@ from datetime import datetime, timedelta
 import binascii
 import math
 import logging
-import pprint
 import calculations
 
 
@@ -121,7 +120,7 @@ def readings_vars_additions_from_db(conn, reading_vars):
         cursor = conn.cursor()
         reading_var_additions = []
         for reading_var in reading_vars:
-            # TODO: remove the action's strip('2') when moving to final system with all the '2' removed from SCM files.
+            # TODO: move column name selection from DB to code
             sql = '''SELECT db_col_name, bytes
                      FROM tbl_var_lookup
                      WHERE mea_name = "''' + reading_var.get('name') + '''"
@@ -320,11 +319,13 @@ def parse_dump_reading(binary_dump_reading, reading_vars):
             bytes = 2  # extra 2 bytes for high-resolution wind dir sensor
         elif var.get('name') in ['sin', 'cos']:
             bytes = 0
+        # TODO: check that high res cos/sinc don't always go with the WndDirOffst, if so, turn on below
         #elif var.get('name') == 'WndDir':
         #    if var.get('model') == 'WndDir':
-        #        bytes = 0
-        #    elif var.get('model') == 'WndDirOffst':
         #        bytes = 2
+        #    elif var.get('model') == 'WndDirOffst':
+        #        bytes = 4
+        # with cos & sin == 0
         else:
             bytes = 2
         #bytes = int(var.get('bytes'))
@@ -438,7 +439,7 @@ def generate_insert_sql(aws_id, readings):
     columns = 'aws_id,stamp,' + columns
     values += ')'
 
-    sql = 'INSERT INTO tbl_15min_new (' + columns.strip(',') + ') VALUES (' + values.strip(',()') + ');'
+    sql = 'INSERT INTO tbl_minute_data (' + columns.strip(',') + ') VALUES (' + values.strip(',()') + ');'
 
     return sql
 
