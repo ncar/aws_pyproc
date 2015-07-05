@@ -7,10 +7,11 @@ from datetime import datetime, timedelta
 import binascii
 import math
 import logging
+import settings
 import calculations
 
 
-def connect_to_aws_db(host="localhost", user="aws", passwd="ASCEshort1", db="aws"):
+def connect_to_aws_db(host=settings.DB_HOST, user=settings.DB_USER, passwd=settings.DB_PASSWD, db=settings.DB):
     try:
         conn = MySQLdb.connect(host=host, user=user, passwd=passwd, db=db)
     except MySQLdb.Error, e:
@@ -146,6 +147,23 @@ def readings_vars_additions_from_db(conn, reading_vars):
         #conn.close()
 
     return reading_var_additions
+
+
+def get_dmp_file_dumps2(dmp_file_path):
+    # read the file, convert to hex
+    with open(dmp_file_path, "rb") as f:
+        bin_content = f.read()
+    hex_content = binascii.hexlify(bin_content)
+
+    print hex_content
+    #split on DUMP
+    dumps = hex_content.split('44554d50')  # 'DUMP' in hex
+
+    # add the DUMP back in to each reading
+    for dump in dumps:
+        dump = '44554d50' + dump
+
+    return dumps[1:]
 
 
 def get_dmp_file_dumps(dmp_file_path):
@@ -482,6 +500,7 @@ def process(dmp_file):
         # TODO: check all stations leaf wetness readings
         reading_vars = reading_vars_from_scm(scm_doc)
         enhanced_reading_vars = readings_vars_additions_from_db(conn, reading_vars)
+
         # get each 'dump' of data from the DMP file, usually 4 per hour, sometimes 6
         dumps = get_dmp_file_dumps(dmp_file)
 
