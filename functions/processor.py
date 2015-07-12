@@ -88,10 +88,10 @@ def reading_vars_from_scm(scm_doc):
     #Get instrument details from Instruments
     instruments = []
     for instrument in t.xpath('/Scheme/Instruments/*'):
-        if instrument.tag.startswith('INST'):
+        if instrument.tag.startswith('INST') or instrument.tag.startswith('Inst'):
             i = dict()
             #print etree.tostring(instrument, pretty_print=True)
-            i['inst'] = instrument.tag.replace('INST', '')
+            i['inst'] = instrument.tag.replace('INST', '').replace('Inst', '')
             i['model'] = instrument.get('Model')
             for inst in instrument.getchildren():
                 if inst.tag == 'Channel':
@@ -336,8 +336,9 @@ def parse_dump_reading(binary_dump_reading, reading_vars):
         #if var.get('name') in ['sin', 'cos', 'LeafWet']:
         if var.get('name') in ['LeafWet', 'a7']:
             bytes = 1
-        elif var.get('name') == 'cos' and var.get('model') == 'WDA-CH':
-            bytes = 2  # extra 2 bytes for high-resolution wind dir sensor
+        # TODO: work out how to remove these magic col names
+        elif var.get('name') == 'cos' and (var.get('model') == 'WDA-CH' or var.get('model') == 'WDUS-C'):
+            bytes = 2  # extra 2 bytes for high-resolution wind dir sensor')
         elif var.get('name') in ['sin', 'cos']:
             bytes = 0
         # TODO: check that high res cos/sinc don't always go with the WndDirOffst, if so, turn on below
@@ -373,8 +374,9 @@ def parse_dump_reading(binary_dump_reading, reading_vars):
         #get the scaled number
         if var.get('type') == 'conversion':
             if var.get('conv') == "'A' gain 'B'":
-                scaled_number = round(float(var.get('b')) * raw_number + float(var.get('a')), 1)
-                if var.get('name') == 'WndSpd':
+                scaled_number = round(float(var.get('b')) * raw_number + float(var.get('a')), 2)
+                # TODO: remove this conversion to km/h as it relies on magic column names. leave values as m/s in DB
+                if var.get('name') == 'WndSpd' or var.get('name') == 'WS':
                     #convert to km/h
                     scaled_number = scaled_number * 3.6
             if var.get('conv') == "'A' to 'B'":
