@@ -336,18 +336,14 @@ def parse_dump_reading(binary_dump_reading, reading_vars):
         #if var.get('name') in ['sin', 'cos', 'LeafWet']:
         if var.get('name') in ['LeafWet', 'a7']:
             bytes = 1
+        # 64 stations using WDA-C  (2 bytes)
+        # 15 stations using WDA-CH (4 bytes)
+        #  5 stations using WDUS-C (4 bytes)
         # TODO: work out how to remove these magic col names
         elif var.get('name') == 'cos' and (var.get('model') == 'WDA-CH' or var.get('model') == 'WDUS-C'):
             bytes = 2  # extra 2 bytes for high-resolution wind dir sensor')
         elif var.get('name') in ['sin', 'cos']:
             bytes = 0
-        # TODO: check that high res cos/sinc don't always go with the WndDirOffst, if so, turn on below
-        #elif var.get('name') == 'WndDir':
-        #    if var.get('model') == 'WndDir':
-        #        bytes = 2
-        #    elif var.get('model') == 'WndDirOffst':
-        #        bytes = 4
-        # with cos & sin == 0
         else:
             bytes = 2
         #bytes = int(var.get('bytes'))
@@ -402,7 +398,7 @@ def parse_dump_reading(binary_dump_reading, reading_vars):
             })
 
         #move pointer for next value
-        reading_pointer = reading_pointer + bytes
+        reading_pointer += bytes
     #endregion
 
     #region calculated variables

@@ -111,6 +111,7 @@ if __name__ == "__main__":
         'Watarru150704-0000.DMP',  # pass 12
         'JOYCE150101-0000.DMP',  # pass 13
         'KUIPTO140101-0000.DMP',  # pass  14
+        'NENANDI150704-0000.DMP',  # pass   15
     ]
     '''
     # test all files
@@ -125,7 +126,7 @@ if __name__ == "__main__":
     '''
     # test one file
 
-    dmp_file_path = TEST_DATA_DIR + 'data/' + TEST_FILES[14]
+    dmp_file_path = TEST_DATA_DIR + 'data/' + TEST_FILES[15]
     print test_one_file_processing(None, dmp_file_path, get_stamp(dmp_file_path))
     #'''
     # tidy up

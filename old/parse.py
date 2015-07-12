@@ -192,7 +192,6 @@ def get_instrument_info(path):
 #@param aws_id	string
 #@return 		xml string
 def get_scm_file_from_DB(aws_id):
-	#TODO: logging.debug("func var_order_from_DB")
 	#get aws_id based on file name
 	sql = "SELECT scm FROM tbl_stations WHERE aws_id = '" +  aws_id + "';"
 
