@@ -85,6 +85,8 @@ def reading_vars_from_scm(scm_doc):
                 instance_entry['action'] = child.text
         instance_entries.append(instance_entry)
 
+    logging.debug(instance_entries)
+
     #Get instrument details from Instruments
     instruments = []
     for instrument in t.xpath('/Scheme/Instruments/*'):
@@ -109,12 +111,19 @@ def reading_vars_from_scm(scm_doc):
                     #print etree.tostring(inst, pretty_print=True)
             instruments.append(i)
 
+    # deduplication of instruments dict (Lyrup Flats has entry twice)
+    instruments = [dict(t) for t in set([tuple(instrument.items()) for instrument in instruments])]
+
+    logging.debug(instruments)
+
     #Merge Buffer0 listing  with instrument details
     instance_entries_with_details = []
     for instance_entry in instance_entries:
         for instrument in instruments:
             if instrument['inst'] == instance_entry.get('inst'):
                 instance_entries_with_details.append(dict(instance_entry.items() + instrument.items()))
+
+    logging.debug(instance_entries_with_details)
 
     return instance_entries_with_details
 
@@ -145,6 +154,8 @@ def readings_vars_additions_from_db(conn, reading_vars):
         cursor.close()
         conn.commit()
         #conn.close()
+
+    logging.debug(reading_var_additions)
 
     return reading_var_additions
 
