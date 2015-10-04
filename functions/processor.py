@@ -15,7 +15,6 @@ def connect_to_aws_db(host=settings.DB_HOST, user=settings.DB_USER, passwd=setti
     try:
         conn = MySQLdb.connect(host=host, user=user, passwd=passwd, db=db)
     except MySQLdb.Error, e:
-        print "Error %d: %s" % (e.args[0], e.args[1])
         logging.error("failed to connect to DB in connect_to_aws_db()\n" + str(e.message))
         sys.exit(1)
 
@@ -33,8 +32,7 @@ def get_station_details(conn, dmp_file_path):
     logging.debug("def get_station_details(" + dmp_file_path + ")")
     # get only the alphabetical parts of the filename from the full_path
     file_name = dmp_file_path.split('/')[-1]
-    m = re.search("(^[A-Za-z_]*)", file_name)
-    aws_name = m.group(0)
+    aws_name = file_name[:-15]
 
     sql = "SELECT aws_id, scm FROM tbl_stations WHERE filename = '" + aws_name + "';"
     try:
@@ -52,7 +50,6 @@ def get_station_details(conn, dmp_file_path):
             #aws_id, scm
             result = [str(row[0]), str(row[1])]
     except MySQLdb.Error, e:
-        print "Error %d: %s" % (e.args[0], e.args[1])
         logging.error("failed to connect to DB in get_station_details()\n" + str(e))
         sys.exit(1)
     finally:
@@ -92,13 +89,12 @@ def reading_vars_from_scm(scm_doc):
     for instrument in t.xpath('/Scheme/Instruments/*'):
         if instrument.tag.startswith('INST') or instrument.tag.startswith('Inst'):
             i = dict()
-            #print etree.tostring(instrument, pretty_print=True)
             i['inst'] = instrument.tag.replace('INST', '').replace('Inst', '')
             i['model'] = instrument.get('Model')
             for inst in instrument.getchildren():
                 if inst.tag == 'Channel':
                     i['name'] = inst.get('Name')
-                if inst.tag.startswith('Scal'):
+                elif inst.tag.startswith('Scal'):
                     # some Scaling seems to miss type and this seems to eb for A gain B types only
                     if inst.get('Type') is None or inst.get('Type').startswith("'A'"):
                         i['type'] = 'conversion'
@@ -108,7 +104,17 @@ def reading_vars_from_scm(scm_doc):
                     elif inst.get('Type').startswith("Formula"):
                         i['type'] = 'formula'
                         i['conv'] = inst.get('Formula')
-                    #print etree.tostring(inst, pretty_print=True)
+                # work out high, low res windDir
+                elif inst.tag == 'Source':
+                    for consts in inst.getchildren():
+                        for const in consts.getchildren():
+                            if i['model']:
+                                if i['model'].startswith('WDA-C'):
+                                    if const.get('Name') == 'InputRange':
+                                        if int(const.get('Value')) > 3000:
+                                            i['res'] = 'high'
+                                        else:
+                                            i['res'] = 'low'
             instruments.append(i)
 
     # deduplication of instruments dict (Lyrup Flats has entry twice)
@@ -147,15 +153,12 @@ def readings_vars_additions_from_db(conn, reading_vars):
             reading_var_addition['bytes'] = int(row[1])
             reading_var_additions.append(reading_var_addition)
     except MySQLdb.Error, e:
-        print "Error %d: %s" % (e.args[0], e.args[1])
         logging.error("failed to connect to DB in readings_vars_additions_from_db()\n" + str(e))
         sys.exit(1)
     finally:
         cursor.close()
         conn.commit()
         #conn.close()
-
-    logging.debug(reading_var_additions)
 
     return reading_var_additions
 
@@ -222,8 +225,6 @@ def get_dmp_file_dumps(dmp_file_path):
                 data_buffer.append(binascii.b2a_hex('U'))
                 data_buffer.append(binascii.b2a_hex('M'))
                 cnt2 = cnt2 + 1
-            #print "buffer count:" + str(cnt2)
-            #print "data_buffers count:" + str(len(data_buffers))
 
             data_buffer.append(int(binascii.b2a_hex(byte), 16))
             byte = f.read(1)
@@ -236,9 +237,6 @@ def get_dmp_file_dumps(dmp_file_path):
 
     #remove first, blank, buffer
     data_buffers.pop(0)
-
-    #for a in data_buffers:
-    #	print str(len(a)) + ", ",
 
     return data_buffers
 
@@ -351,8 +349,9 @@ def parse_dump_reading(binary_dump_reading, reading_vars):
         # 15 stations using WDA-CH (4 bytes)
         #  5 stations using WDUS-C (4 bytes)
         # TODO: work out how to remove these magic col names
-        elif var.get('name') == 'cos' and (var.get('model') == 'WDA-CH' or var.get('model') == 'WDUS-C'):
-            bytes = 2  # extra 2 bytes for high-resolution wind dir sensor')
+        #elif var.get('name') == 'cos' and (var.get('model') == 'WDA-CHx' or var.get('model') == 'WDUS-C'):
+        elif var.get('name') == 'cos' and var.get('res') == 'high':
+            bytes = 2  # extra 2 bytes for high-resolution wind dir sensor'
         elif var.get('name') in ['sin', 'cos']:
             bytes = 0
         else:
@@ -457,7 +456,6 @@ def generate_insert_sql(aws_id, readings):
 
     pass_cnt = 0
     for reading in readings['readings']:
-        #print reading['timestamp']
         values += '"' + aws_id + '","' + reading['timestamp'] + '",'
         for var in reading['variables']:
             if var['db_column'] != 'nothing':
@@ -509,7 +507,6 @@ def process(dmp_file):
         # TODO: check all stations leaf wetness readings
         reading_vars = reading_vars_from_scm(scm_doc)
         enhanced_reading_vars = readings_vars_additions_from_db(conn, reading_vars)
-
         # get each 'dump' of data from the DMP file, usually 4 per hour, sometimes 6
         dumps = get_dmp_file_dumps(dmp_file)
 
