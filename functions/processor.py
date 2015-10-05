@@ -2,13 +2,11 @@ import MySQLdb
 from lxml import etree
 from StringIO import StringIO
 import sys
-import re
 from datetime import datetime, timedelta
 import binascii
 import math
 import logging
 import settings
-import calculations
 
 
 def connect_to_aws_db(host=settings.DB_HOST, user=settings.DB_USER, passwd=settings.DB_PASSWD, db=settings.DB):
@@ -338,7 +336,7 @@ def parse_dump_reading(binary_dump_reading, reading_vars):
     wind_avg = 0
 
     #region read variables
-    read_vars = []
+    vars = []
     reading_pointer = 0
     for var in reading_vars:
         #get bytes
@@ -354,6 +352,8 @@ def parse_dump_reading(binary_dump_reading, reading_vars):
             bytes = 2  # extra 2 bytes for high-resolution wind dir sensor'
         elif var.get('name') in ['sin', 'cos']:
             bytes = 0
+        elif var.get('name') == 'RN' and var.get('action') == 'TOT256':
+            bytes = 1
         else:
             bytes = 2
         #bytes = int(var.get('bytes'))
@@ -385,6 +385,9 @@ def parse_dump_reading(binary_dump_reading, reading_vars):
                 if var.get('name') == 'WndSpd' or var.get('name') == 'WS':
                     #convert to km/h
                     scaled_number = scaled_number * 3.6
+                elif var.get('name') == 'RN':
+                    if var.get('action') == 'TOT256':
+                        scaled_number = scaled_number / 256  # Juniors
             if var.get('conv') == "'A' to 'B'":
                 scale_range = (float(var.get('b')) - float(var.get('a'))) * 100 + 1
                 #TODO: check range mapping. Why divide by 25600? Should it be 25500? Or 102000 for the more accurate sort?
@@ -402,7 +405,7 @@ def parse_dump_reading(binary_dump_reading, reading_vars):
             elif var.get('db_col') == 'Wavg':
                 wind_avg = scaled_number
 
-            read_vars.append({
+            vars.append({
                 'value': scaled_number,
                 'db_column': var.get('db_col'),
             })
@@ -412,42 +415,49 @@ def parse_dump_reading(binary_dump_reading, reading_vars):
     #endregion
 
     #region calculated variables
-    calc_vars = []
-    import calculations
-
-    wind_dir = calculations.calc_wind_dir(sin, cos)
-    calc_vars.append({
-        'value': wind_dir,
-        'db_column': 'Wdir',
-    })
-    app_t = calculations.calc_app_t(rh, air_t, wind_avg)
-    calc_vars.append({
-        'value': app_t,
-        'db_column': 'appT',
-    })
-    dp = calculations.calc_dp(rh, air_t)
-    calc_vars.append({
-        'value': dp,
-        'db_column': 'dp',
-    })
-    wet_t = calculations.calc_wet_t(air_t, rh, dp)
-    calc_vars.append({
-        'value': wet_t,
-        'db_column': 'wetT',
-    })
-    delta_t = calculations.calc_delta_t(air_t, wet_t)
-    calc_vars.append({
-        'value': delta_t,
-        'db_column': 'deltaT',
-    })
-    vp = calculations.calc_vp(dp)
-    calc_vars.append({
-        'value': vp,
-        'db_column': 'vp',
-    })
+    # only do calculations for AWSes, not rain gauges
+    aws = False
+    for var in vars:
+        if var['db_column'] == 'airT':
+            aws = True
+    if aws:   
+        calc_vars = []
+        import calculations
+    
+        wind_dir = calculations.calc_wind_dir(sin, cos)
+        calc_vars.append({
+            'value': wind_dir,
+            'db_column': 'Wdir',
+        })
+        app_t = calculations.calc_app_t(rh, air_t, wind_avg)
+        calc_vars.append({
+            'value': app_t,
+            'db_column': 'appT',
+        })
+        dp = calculations.calc_dp(rh, air_t)
+        calc_vars.append({
+            'value': dp,
+            'db_column': 'dp',
+        })
+        wet_t = calculations.calc_wet_t(air_t, rh, dp)
+        calc_vars.append({
+            'value': wet_t,
+            'db_column': 'wetT',
+        })
+        delta_t = calculations.calc_delta_t(air_t, wet_t)
+        calc_vars.append({
+            'value': delta_t,
+            'db_column': 'deltaT',
+        })
+        vp = calculations.calc_vp(dp)
+        calc_vars.append({
+            'value': vp,
+            'db_column': 'vp',
+        })
+        vars = vars + calc_vars
     #endregion
 
-    return read_vars + calc_vars
+    return vars
 
 
 def generate_insert_sql(aws_id, readings):
