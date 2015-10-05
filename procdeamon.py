@@ -104,7 +104,7 @@ def ftp_file_to_adld(aws_id, path):
 
 if __name__ == '__main__':
     logging.basicConfig(filename=settings.LOG_FILE,
-                        format='%(asctime)s %(levelname)s %(message)s',
+                        format='%(asctime)s %(levelname)s %(funcName)s %(lineno)d %(message)s',
                         level=settings.LOG_LEVEL)
 
     try:
