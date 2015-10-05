@@ -80,8 +80,6 @@ def reading_vars_from_scm(scm_doc):
                 instance_entry['action'] = child.text
         instance_entries.append(instance_entry)
 
-    logging.debug(instance_entries)
-
     #Get instrument details from Instruments
     instruments = []
     for instrument in t.xpath('/Scheme/Instruments/*'):
@@ -107,7 +105,7 @@ def reading_vars_from_scm(scm_doc):
                     for consts in inst.getchildren():
                         for const in consts.getchildren():
                             if i['model']:
-                                if i['model'].startswith('WDA-C'):
+                                if i['model'].startswith('WDA-C') or i['model'].startswith('WDUS-C'):
                                     if const.get('Name') == 'InputRange':
                                         if int(const.get('Value')) > 3000:
                                             i['res'] = 'high'
@@ -118,16 +116,12 @@ def reading_vars_from_scm(scm_doc):
     # deduplication of instruments dict (Lyrup Flats has entry twice)
     instruments = [dict(t) for t in set([tuple(instrument.items()) for instrument in instruments])]
 
-    logging.debug(instruments)
-
     #Merge Buffer0 listing  with instrument details
     instance_entries_with_details = []
     for instance_entry in instance_entries:
         for instrument in instruments:
             if instrument['inst'] == instance_entry.get('inst'):
                 instance_entries_with_details.append(dict(instance_entry.items() + instrument.items()))
-
-    logging.debug(instance_entries_with_details)
 
     return instance_entries_with_details
 
