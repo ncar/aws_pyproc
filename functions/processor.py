@@ -111,7 +111,10 @@ def reading_vars_from_scm(scm_doc):
                                             i['res'] = 'high'
                                         else:
                                             i['res'] = 'low'
-            instruments.append(i)
+            if instrument.get('Disabled') == 'True':
+                pass
+            else:
+                instruments.append(i)
 
     # deduplication of instruments dict (Lyrup Flats has entry twice)
     instruments = [dict(t) for t in set([tuple(instrument.items()) for instrument in instruments])]
