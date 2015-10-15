@@ -100,17 +100,36 @@ def reading_vars_from_scm(scm_doc):
                     elif inst.get('Type').startswith("Formula"):
                         i['type'] = 'formula'
                         i['conv'] = inst.get('Formula')
+                    else:  # Blank
+                        i['type'] = 'formula'
+                        i['conv'] = inst.get('Formula')
                 # work out high, low res windDir
                 elif inst.tag == 'Source':
-                    for consts in inst.getchildren():
-                        for const in consts.getchildren():
-                            if i['model']:
-                                if i['model'].startswith('WDA-C') or i['model'].startswith('WDUS-C'):
-                                    if const.get('Name') == 'InputRange':
-                                        if int(const.get('Value')) > 3000:
-                                            i['res'] = 'high'
-                                        else:
-                                            i['res'] = 'low'
+                    if i['name'] in ['sin', 'cos']:
+                        for consts in inst.getchildren():
+                            for const in consts.getchildren():
+                                if i['model']:
+                                    if (i['model'].startswith('WDA-CH') or
+                                        i['model'].startswith('WDA-SH') or
+                                        i['model'].startswith('WDUS-C') or
+                                        i['model'].startswith('WDUS-S')):
+                                        i['res'] = 'high'
+                                    else:
+                                        i['res'] = 'low'
+                                    #if const.get('Name') == 'InputRange':
+                                    #    if int(const.get('Value')) > 3000:
+                                    #        i['res'] = 'high'
+                                    #    else:
+                                    #        i['res'] = 'low'
+                    if i['name'] == 'LeafWet':
+                        for consts in inst.getchildren():
+                            for const in consts.getchildren():
+                                if const.get('Name') == 'InputChan':
+                                    if const.get('Value') == 'SDIID1':
+                                        i['lw'] = 2
+                                    else:
+                                        i['lw'] = 1
+
             if instrument.get('Disabled') == 'True':
                 pass
             else:
@@ -158,21 +177,48 @@ def readings_vars_additions_from_db(conn, reading_vars):
     return reading_var_additions
 
 
+def readings_vars_additions_from_mapping(reading_vars):
+    import mappings
+
+    updated_vars = []
+    for var in reading_vars:
+        if var['type'] == 'conversion':  # ignore formula
+            new = mappings.db_cols[next(index for (index, d) in enumerate(mappings.db_cols) if d['name'] == var['name'] and d['action'] == var['action'].replace('AVE2','AVE'))]
+
+            # merge dicts
+            z = {}
+            z.update(var)
+            z.update(new)
+            #get bytes
+            if var.get('name') == 'LeafWet':
+                if var.get('lw') == 1:
+                    bytes = 1
+                else:
+                    bytes = 2
+            elif var.get('name') == 'a7':
+                bytes = 1
+            elif var.get('res') == 'high':
+                bytes = 2  # extra 2 bytes for high-resolution wind dir sensor'
+            elif var.get('res') == 'low':
+                bytes = 1
+            else:
+                bytes = 2
+            z['bytes'] = bytes
+            updated_vars.append(z)
+
+    return updated_vars
+
+
 def get_dmp_file_dumps2(dmp_file_path):
-    # read the file, convert to hex
+    # read the file, split when we see text 'DUMP'
     with open(dmp_file_path, "rb") as f:
         bin_content = f.read()
-    hex_content = binascii.hexlify(bin_content)
+    buffers = bin_content.split('DUMP')
 
-    print hex_content
-    #split on DUMP
-    dumps = hex_content.split('44554d50')  # 'DUMP' in hex
+    for buffer in buffers:
+        print binascii.hexlify(buffer)
 
-    # add the DUMP back in to each reading
-    for dump in dumps:
-        dump = '44554d50' + dump
-
-    return dumps[1:]
+    return '1'
 
 
 def get_dmp_file_dumps(dmp_file_path):
@@ -182,7 +228,6 @@ def get_dmp_file_dumps(dmp_file_path):
     :param dmp_file:
     :return: an array of readings
     """
-    logging.debug("def get_dmp_file_readings(" + dmp_file_path + ")")
     #read the file, byte by byte, find the index of the 'D's in DUMP
     D = 0
     U = 0
@@ -324,8 +369,116 @@ def parse_dump(binary_dump, reading_vars):
     return {'readings': readings}
 
 
-# TODO: Nenandi battery reading
 def parse_dump_reading(binary_dump_reading, reading_vars):
+    sin = 0
+    cos = 0
+    rh = 0
+    air_t = 0
+    wind_avg = 0
+
+    #region read variables
+    vars = []
+    reading_pointer = 0
+    for var in reading_vars:
+        #get the raw number
+        var_bytes = binary_dump_reading[reading_pointer:reading_pointer + var['bytes']]
+
+        if len(var_bytes) == 1:
+            raw_number = var_bytes[0]
+        elif len(var_bytes) == 2:
+            #cater for negative values
+            if var_bytes[1] > 100:
+                if var_bytes[1] == 255:
+                    datum2 = -1
+                elif var_bytes[1] == 254:
+                    datum2 = -2
+                elif var_bytes[1] == 253:
+                    datum2 = -3
+            else:
+                datum2 = var_bytes[1]
+
+            raw_number = var_bytes[0] + 256 * datum2
+        #get the scaled number
+        if var.get('type') == 'conversion':
+            if var.get('conv') == "'A' gain 'B'":
+                scaled_number = round(float(var.get('b')) * raw_number + float(var.get('a')), 2)
+                # TODO: remove this conversion to km/h as it relies on magic column names. leave values as m/s in DB
+                if var.get('name') == 'WndSpd' or var.get('name') == 'WS':
+                    #convert to km/h
+                    scaled_number = scaled_number * 3.6
+            if var.get('conv') == "'A' to 'B'":
+                scale_range = (float(var.get('b')) - float(var.get('a'))) * 100 + 1
+                #TODO: check range mapping. Why divide by 25600? Should it be 25500? Or 102000 for the more accurate sort?
+                scaled_number = round((scale_range / 25600.0) * raw_number - 1.0, 4)
+
+            #store vars needed for formula
+            if var.get('name') == 'sin':
+                sin = scaled_number
+            elif var.get('name') == 'cos':
+                cos = scaled_number
+            elif var.get('db_col') == 'rh':
+                rh = scaled_number
+            elif var.get('db_col') == 'airT':
+                air_t = scaled_number
+            elif var.get('db_col') == 'Wavg':
+                wind_avg = scaled_number
+
+            vars.append({
+                'value': scaled_number,
+                'db_col': var.get('db_col'),
+            })
+
+        #move pointer for next value
+        reading_pointer += var['bytes']
+    #endregion
+
+    #region calculated variables
+    # only do calculations for AWSes, not rain gauges
+    aws = False
+    for var in vars:
+        if var['db_col'] == 'airT':
+            aws = True
+    if aws:   
+        calc_vars = []
+        import calculations
+    
+        wind_dir = calculations.calc_wind_dir(sin, cos)
+        calc_vars.append({
+            'value': wind_dir,
+            'db_col': 'Wdir',
+        })
+        app_t = calculations.calc_app_t(rh, air_t, wind_avg)
+        calc_vars.append({
+            'value': app_t,
+            'db_col': 'appT',
+        })
+        dp = calculations.calc_dp(rh, air_t)
+        calc_vars.append({
+            'value': dp,
+            'db_col': 'dp',
+        })
+        wet_t = calculations.calc_wet_t(air_t, rh, dp)
+        calc_vars.append({
+            'value': wet_t,
+            'db_col': 'wetT',
+        })
+        delta_t = calculations.calc_delta_t(air_t, wet_t)
+        calc_vars.append({
+            'value': delta_t,
+            'db_col': 'deltaT',
+        })
+        vp = calculations.calc_vp(dp)
+        calc_vars.append({
+            'value': vp,
+            'db_col': 'vp',
+        })
+        vars = vars + calc_vars
+    #endregion
+
+    return vars
+
+
+def parse_dump_reading_old(binary_dump_reading, reading_vars):
     sin = 0
     cos = 0
     rh = 0
@@ -404,7 +557,7 @@ def parse_dump_reading(binary_dump_reading, reading_vars):
 
             vars.append({
                 'value': scaled_number,
-                'db_column': var.get('db_col'),
+                'db_col': var.get('db_col'),
             })
 
         #move pointer for next value
@@ -415,41 +568,41 @@ def parse_dump_reading(binary_dump_reading, reading_vars):
     # only do calculations for AWSes, not rain gauges
     aws = False
     for var in vars:
-        if var['db_column'] == 'airT':
+        if var['db_col'] == 'airT':
             aws = True
-    if aws:   
+    if aws:
         calc_vars = []
         import calculations
-    
+
         wind_dir = calculations.calc_wind_dir(sin, cos)
         calc_vars.append({
             'value': wind_dir,
-            'db_column': 'Wdir',
+            'db_col': 'Wdir',
         })
         app_t = calculations.calc_app_t(rh, air_t, wind_avg)
         calc_vars.append({
             'value': app_t,
-            'db_column': 'appT',
+            'db_col': 'appT',
         })
         dp = calculations.calc_dp(rh, air_t)
         calc_vars.append({
             'value': dp,
-            'db_column': 'dp',
+            'db_col': 'dp',
         })
         wet_t = calculations.calc_wet_t(air_t, rh, dp)
         calc_vars.append({
             'value': wet_t,
-            'db_column': 'wetT',
+            'db_col': 'wetT',
         })
         delta_t = calculations.calc_delta_t(air_t, wet_t)
         calc_vars.append({
             'value': delta_t,
-            'db_column': 'deltaT',
+            'db_col': 'deltaT',
         })
         vp = calculations.calc_vp(dp)
         calc_vars.append({
             'value': vp,
-            'db_column': 'vp',
+            'db_col': 'vp',
         })
         vars = vars + calc_vars
     #endregion
@@ -465,9 +618,9 @@ def generate_insert_sql(aws_id, readings):
     for reading in readings['readings']:
         values += '"' + aws_id + '","' + reading['timestamp'] + '",'
         for var in reading['variables']:
-            if var['db_column'] != 'nothing':
+            if var['db_col'] != 'none':
                 if pass_cnt == 0:
-                    columns += var['db_column'] + ','
+                    columns += var['db_col'] + ','
                 values += str(var['value']) + ','
         values = values.strip(',') + '),('
         pass_cnt += 1
@@ -475,7 +628,6 @@ def generate_insert_sql(aws_id, readings):
     values += ')'
 
     sql = 'INSERT INTO tbl_data_minutes (' + columns.strip(',') + ') VALUES (' + values.strip(',()') + ');'
-
     return sql
 
 
@@ -510,13 +662,11 @@ def process(dmp_file):
         [aws_id, scm_doc] = get_station_details(conn, dmp_file)
 
         # get the variables that this station reads, according to its SCM file
-        # TODO: check LMW07 battery values (divide by 100?)
-        # TODO: check all stations leaf wetness readings
         reading_vars = reading_vars_from_scm(scm_doc)
-        enhanced_reading_vars = readings_vars_additions_from_db(conn, reading_vars)
-        # get each 'dump' of data from the DMP file, usually 4 per hour, sometimes 6
-        dumps = get_dmp_file_dumps(dmp_file)
+        enhanced_reading_vars = readings_vars_additions_from_mapping(reading_vars)
 
+        # get each 'dump' of data from the DMP file, usually 4 per hour, sometimes 6'
+        dumps = get_dmp_file_dumps(dmp_file)
         # built an SQL INSERT statement for each 'dump'
         sql = ''
         for dump in dumps:
