@@ -23,7 +23,9 @@ db_cols = [
     {'name': 'a7',      'action': 'AVE',    'db_col': 'batt'},
     {'name': 'h7',      'action': 'AVE',    'db_col': 'batt'},
     {'name': 'h15',      'action': 'AVE',    'db_col': 'none'},
+    {'name': 'Batt',    'action': 'MIN',    'db_col': 'none'},
     {'name': 'Batt',    'action': 'AVE',    'db_col': 'batt'},
+    {'name': 'Batt',    'action': 'MAX',    'db_col': 'none'},
 
     {'name': 'RN',      'action': 'TOT2',   'db_col': 'rain'},
     {'name': 'RN',      'action': 'TOT1',   'db_col': 'rain'},
