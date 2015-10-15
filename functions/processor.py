@@ -182,13 +182,17 @@ def readings_vars_additions_from_mapping(reading_vars):
 
     updated_vars = []
     for var in reading_vars:
+        import pprint
+        pprint.pprint(reading_vars, indent=2)
         if var['type'] == 'conversion':  # ignore formula
-            new = mappings.db_cols[next(index for (index, d) in enumerate(mappings.db_cols) if d['name'] == var['name'] and d['action'] == var['action'].replace('AVE2','AVE'))]
+            new = mappings.db_cols[next(index for (index, d) in enumerate(mappings.db_cols) if d['name'] == var['name'] and d['action'].lower() == var['action'].lower())]
 
             # merge dicts
             z = {}
             z.update(var)
+            print z
             z.update(new)
+            print z
             #get bytes
             if var.get('name') == 'LeafWet':
                 if var.get('lw') == 1:
