@@ -36,6 +36,11 @@ db_cols = [
     {'name': 'SoilTemp','action': 'AVE',    'db_col': 'soilT'},
     {'name': 'SDIID0',  'action': 'AVE',     'db_col': 'soilT'},
 
+    {'name': 'ST1',      'action': 'AVE',    'db_col': 'none'},
+    {'name': 'ST2',      'action': 'AVE',    'db_col': 'none'},
+    {'name': 'ST3',      'action': 'AVE',    'db_col': 'none'},
+    {'name': 'ST4',      'action': 'AVE',    'db_col': 'none'},
+
     {'name': 'WndSpd',  'action': 'MIN',    'db_col': 'Wmin'},
     {'name': 'WndSpd',  'action': 'AVE',    'db_col': 'Wavg'},
     {'name': 'WndSpd',  'action': 'MAX',    'db_col': 'Wmax'},
