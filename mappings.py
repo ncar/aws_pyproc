@@ -44,6 +44,7 @@ db_cols = [
     {'name': 'WS',      'action': 'MAX',    'db_col': 'Wmax'},
 
     {'name': 'h5',      'action': 'AVE',    'db_col': 'pressure'},
+    {'name': 'BP',      'action': 'AVE',    'db_col': 'pressure'},
 
     {'name': 'PanCurrentLevel',      'action': 'AVE',    'db_col': 'none'},
     {'name': 'Blank',      'action': 'AVE',    'db_col': 'none'},
